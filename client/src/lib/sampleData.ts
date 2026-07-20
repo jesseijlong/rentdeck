@@ -1,4 +1,72 @@
-import type { InsertProperty } from "@shared/schema";
+import type { InsertProperty, InsertMaintenance } from "@shared/schema";
+
+export const SAMPLE_MAINTENANCE: Omit<InsertMaintenance, "propertyId">[] = [
+  {
+    title: "Kitchen sink leak repair",
+    category: "Plumbing",
+    status: "Completed",
+    priority: "High",
+    requestDate: "2026-05-12",
+    dueDate: "2026-05-14",
+    completedDate: "2026-05-15",
+    cost: 285,
+    vendor: "Cape Fear Plumbing",
+    invoiceRef: "INV-1042",
+    notes: "Replaced p-trap and supply line. 90-day warranty.",
+  },
+  {
+    title: "HVAC annual service",
+    category: "HVAC",
+    status: "Completed",
+    priority: "Medium",
+    requestDate: "2026-04-02",
+    dueDate: "2026-04-10",
+    completedDate: "2026-04-08",
+    cost: 165,
+    vendor: "Carolina Comfort",
+    invoiceRef: "INV-0987",
+    notes: "Cleaned coils, replaced filter. Recommended replacing capacitor next season.",
+  },
+  {
+    title: "Tenant reports flickering outlet",
+    category: "Electrical",
+    status: "In Progress",
+    priority: "Urgent",
+    requestDate: "2026-07-18",
+    dueDate: "2026-07-21",
+    completedDate: "",
+    cost: 0,
+    vendor: "Brightspark Electric",
+    invoiceRef: "",
+    notes: "Living room outlet. Electrician scheduled for Tuesday.",
+  },
+  {
+    title: "Broken window latch — unit B",
+    category: "Cosmetic",
+    status: "Open",
+    priority: "Low",
+    requestDate: "2026-07-19",
+    dueDate: "2026-07-28",
+    completedDate: "",
+    cost: 0,
+    vendor: "",
+    invoiceRef: "",
+    notes: "Tenant requesting replacement latch on bedroom window.",
+  },
+  {
+    title: "Quarterly pest treatment",
+    category: "Pest Control",
+    status: "Completed",
+    priority: "Low",
+    requestDate: "2026-06-01",
+    dueDate: "2026-06-05",
+    completedDate: "2026-06-03",
+    cost: 95,
+    vendor: "BugStop NC",
+    invoiceRef: "INV-1101",
+    notes: "Routine perimeter treatment, all 4 units.",
+  },
+];
 
 export const SAMPLE_PROPERTIES: InsertProperty[] = [
   {

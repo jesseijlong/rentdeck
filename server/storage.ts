@@ -1,5 +1,5 @@
-import { properties } from '@shared/schema';
-import type { Property, InsertProperty } from '@shared/schema';
+import { properties, maintenance } from '@shared/schema';
+import type { Property, InsertProperty, Maintenance, InsertMaintenance } from '@shared/schema';
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
@@ -39,6 +39,23 @@ sqlite.exec(`
     notes TEXT NOT NULL DEFAULT '',
     createdAt INTEGER NOT NULL DEFAULT 0
   );
+  CREATE TABLE IF NOT EXISTS maintenance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    propertyId INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'General',
+    status TEXT NOT NULL DEFAULT 'Open',
+    priority TEXT NOT NULL DEFAULT 'Medium',
+    requestDate TEXT NOT NULL DEFAULT '',
+    dueDate TEXT NOT NULL DEFAULT '',
+    completedDate TEXT NOT NULL DEFAULT '',
+    cost REAL NOT NULL DEFAULT 0,
+    vendor TEXT NOT NULL DEFAULT '',
+    invoiceRef TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    createdAt INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (propertyId) REFERENCES properties(id) ON DELETE CASCADE
+  );
 `);
 
 export const db = drizzle(sqlite);
@@ -50,6 +67,11 @@ export interface IStorage {
   updateProperty(id: number, p: InsertProperty): Promise<Property | undefined>;
   deleteProperty(id: number): Promise<void>;
   replaceAll(items: InsertProperty[]): Promise<void>;
+
+  listMaintenance(): Promise<Maintenance[]>;
+  createMaintenance(m: InsertMaintenance): Promise<Maintenance>;
+  updateMaintenance(id: number, m: InsertMaintenance): Promise<Maintenance | undefined>;
+  deleteMaintenance(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -77,9 +99,29 @@ export class DatabaseStorage implements IStorage {
 
   async replaceAll(items: InsertProperty[]): Promise<void> {
     db.delete(properties).run();
+    // also clear maintenance since properties are gone
+    db.delete(maintenance).run();
     if (items.length === 0) return;
     const rows = items.map((p) => ({ ...p, createdAt: Date.now() }));
     db.insert(properties).values(rows).run();
+  }
+
+  async listMaintenance(): Promise<Maintenance[]> {
+    return db.select().from(maintenance).all();
+  }
+
+  async createMaintenance(m: InsertMaintenance): Promise<Maintenance> {
+    const payload = { ...m, createdAt: Date.now() };
+    return db.insert(maintenance).values(payload).returning().get();
+  }
+
+  async updateMaintenance(id: number, m: InsertMaintenance): Promise<Maintenance | undefined> {
+    db.update(maintenance).set(m).where(eq(maintenance.id, id)).run();
+    return db.select().from(maintenance).where(eq(maintenance.id, id)).get();
+  }
+
+  async deleteMaintenance(id: number): Promise<void> {
+    db.delete(maintenance).where(eq(maintenance.id, id)).run();
   }
 }
 

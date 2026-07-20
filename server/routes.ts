@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from 'node:http';
 import { storage } from "./storage";
-import { insertPropertySchema } from "@shared/schema";
+import { insertPropertySchema, insertMaintenanceSchema } from "@shared/schema";
 
 export async function registerRoutes(
   _httpServer: Server,
@@ -47,6 +47,40 @@ export async function registerRoutes(
     );
     await storage.replaceAll(cleaned);
     res.json({ count: cleaned.length });
+  });
+
+  // ---- Maintenance ----
+  app.get("/api/maintenance", async (_req, res) => {
+    const items = await storage.listMaintenance();
+    res.json(items);
+  });
+
+  app.post("/api/maintenance", async (req, res) => {
+    const parsed = insertMaintenanceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    const created = await storage.createMaintenance(parsed.data);
+    res.status(201).json(created);
+  });
+
+  app.put("/api/maintenance/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    const parsed = insertMaintenanceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    const updated = await storage.updateMaintenance(id, parsed.data);
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/maintenance/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+    await storage.deleteMaintenance(id);
+    res.status(204).end();
   });
 
   return _httpServer;

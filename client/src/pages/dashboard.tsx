@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { type Property, type InsertProperty } from "@shared/schema";
+import { type Property, type InsertProperty, type Maintenance } from "@shared/schema";
 import { computeMetrics, sumPortfolio } from "@/lib/metrics";
 import { currency, percent, signedCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -11,9 +11,10 @@ import {
   parseCsv,
   rowsToProperties,
 } from "@/lib/csv";
-import { SAMPLE_PROPERTIES } from "@/lib/sampleData";
+import { SAMPLE_PROPERTIES, SAMPLE_MAINTENANCE } from "@/lib/sampleData";
 import { PropertyForm } from "@/components/PropertyForm";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { MaintenanceView, maintenanceForProperty } from "@/components/MaintenanceView";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -46,7 +47,6 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
-  ChevronDown,
   ChevronRight,
   Download,
   Upload,
@@ -55,6 +55,7 @@ import {
   TrendingUp,
   PiggyBank,
   Database,
+  Wrench,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -62,14 +63,23 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Property | null>(null);
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Property | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Property | null>(null);
+  const [view, setView] = useState<"portfolio" | "maintenance">("portfolio");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: properties = [], isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/properties");
+      return res.json();
+    },
+  });
+
+  const { data: maintenanceItems = [] } = useQuery<Maintenance[]>({
+    queryKey: ["/api/maintenance"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/maintenance");
       return res.json();
     },
   });
@@ -142,7 +152,18 @@ export default function Dashboard() {
 
   const loadSample = async () => {
     await replaceMut.mutateAsync(SAMPLE_PROPERTIES);
-    toast({ title: "Sample properties loaded" });
+    // fetch freshly-created properties to get their IDs, then seed maintenance
+    const res = await apiRequest("GET", "/api/properties");
+    const fresh: Property[] = await res.json();
+    await Promise.all(
+      SAMPLE_MAINTENANCE.map((m, i) => {
+        if (fresh.length === 0) return Promise.resolve();
+        const propertyId = fresh[i % fresh.length].id;
+        return apiRequest("POST", "/api/maintenance", { ...m, propertyId });
+      })
+    );
+    qc.invalidateQueries({ queryKey: ["/api/maintenance"] });
+    toast({ title: "Sample data loaded" });
   };
 
   const clearAll = async () => {
@@ -216,6 +237,25 @@ export default function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        {/* View tabs */}
+        <div className="mb-5 inline-flex items-center gap-1 rounded-lg border bg-card p-1">
+          <TabButton active={view === "portfolio"} onClick={() => setView("portfolio")} icon={<Database size={15} />}>
+            Portfolio
+          </TabButton>
+          <TabButton active={view === "maintenance"} onClick={() => setView("maintenance")} icon={<Wrench size={15} />}>
+            Maintenance
+            {maintenanceItems.filter((m) => m.status === "Open").length > 0 && (
+              <span className="num ml-1.5 rounded-full bg-amber-500/20 px-1.5 py-px text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                {maintenanceItems.filter((m) => m.status === "Open").length}
+              </span>
+            )}
+          </TabButton>
+        </div>
+
+        {view === "maintenance" ? (
+          <MaintenanceView properties={properties} />
+        ) : (
+          <>
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Kpi label="Properties" value={String(properties.length)} icon={<Database size={16} />} />
@@ -254,10 +294,10 @@ export default function Dashboard() {
                     stroke="hsl(var(--border))"
                     tickLine={false}
                     interval={0}
-                    angle={-20}
+                    angle={-18}
                     textAnchor="end"
-                    height={56}
-                    tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 13) + "…" : v)}
+                    height={64}
+                    tickFormatter={(v: string) => (v.length > 24 ? v.slice(0, 23) + "…" : v)}
                   />
                   <YAxis
                     tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
@@ -295,7 +335,7 @@ export default function Dashboard() {
             <EmptyState onAdd={openAdd} onSample={loadSample} busy={replaceMut.isPending} />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[860px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <th className="w-8 px-3 py-2.5" />
@@ -314,18 +354,17 @@ export default function Dashboard() {
                 <tbody>
                   {properties.map((p) => {
                     const m = computeMetrics(p);
-                    const open = expanded === p.id;
                     return (
                       <Fragment key={p.id}>
                         <tr className="border-b last:border-0 hover:bg-muted/30">
                           <td className="px-3 py-2.5">
                             <button
-                              onClick={() => setExpanded(open ? null : p.id)}
+                              onClick={() => setDetailTarget(p)}
                               className="text-muted-foreground hover:text-foreground"
-                              aria-label={open ? "Collapse" : "Expand"}
+                              aria-label="View details"
                               data-testid={`button-expand-${p.id}`}
                             >
-                              {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              <ChevronRight size={16} />
                             </button>
                           </td>
                           <td className="px-3 py-2.5">
@@ -355,9 +394,9 @@ export default function Dashboard() {
                                 <DropdownMenuItem onClick={() => openEdit(p)}>
                                   <Pencil size={14} className="mr-2" /> Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setExpanded(open ? null : p.id)}>
-                                  {open ? <ChevronDown size={14} className="mr-2" /> : <ChevronRight size={14} className="mr-2" />}
-                                  {open ? "Hide details" : "View details"}
+                                <DropdownMenuItem onClick={() => setDetailTarget(p)}>
+                                  <ChevronRight size={14} className="mr-2" />
+                                  View details
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -370,14 +409,6 @@ export default function Dashboard() {
                             </DropdownMenu>
                           </td>
                         </tr>
-                        {open && (
-                          <tr className="bg-muted/20">
-                            <td />
-                            <td colSpan={10} className="px-3 py-4">
-                              <DetailPanel p={p} m={m} />
-                            </td>
-                          </tr>
-                        )}
                       </Fragment>
                     );
                   })}
@@ -406,6 +437,8 @@ export default function Dashboard() {
             </span>
           </div>
         )}
+          </>
+        )}
       </main>
 
       <PropertyForm
@@ -423,6 +456,41 @@ export default function Dashboard() {
           setDeleteTarget(null);
         }}
       />
+
+      <Dialog open={!!detailTarget} onOpenChange={(o) => !o && setDetailTarget(null)}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{detailTarget?.name}</DialogTitle>
+            <DialogDescription>
+              {detailTarget?.address}
+              {detailTarget?.address && detailTarget?.city ? ", " : ""}
+              {detailTarget?.city}
+              {detailTarget?.city && detailTarget?.state ? ", " : ""}
+              {detailTarget?.state} {detailTarget?.zip}
+            </DialogDescription>
+          </DialogHeader>
+          {detailTarget && (
+            <DetailPanel
+              p={detailTarget}
+              m={computeMetrics(detailTarget)}
+              maint={maintenanceForProperty(maintenanceItems, detailTarget.id)}
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailTarget(null)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                openEdit(detailTarget);
+                setDetailTarget(null);
+              }}
+            >
+              <Pencil size={14} className="mr-1.5" /> Edit property
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -454,7 +522,41 @@ function Kpi({
   );
 }
 
-function DetailPanel({ p, m }: { p: Property; m: ReturnType<typeof computeMetrics> }) {
+function TabButton({
+  active,
+  onClick,
+  icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function DetailPanel({
+  p,
+  m,
+  maint,
+}: {
+  p: Property;
+  m: ReturnType<typeof computeMetrics>;
+  maint: { items: import("@shared/schema").Maintenance[]; open: number; spend: number };
+}) {
   const lines = [
     { label: "Property type", value: p.propertyType },
     { label: "Purchased", value: `${formatDate(p.purchaseDate)} · ${currency(p.purchasePrice)}` },
@@ -492,7 +594,7 @@ function DetailPanel({ p, m }: { p: Property; m: ReturnType<typeof computeMetric
   ];
 
   return (
-    <div className="grid gap-5 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <DetailCol title="Property">
         {lines.map((l) => (
           <Row key={l.label} {...l} />
@@ -513,8 +615,25 @@ function DetailPanel({ p, m }: { p: Property; m: ReturnType<typeof computeMetric
           <Row key={l.label} {...l} />
         ))}
       </DetailCol>
+      {maint.items.length > 0 && (
+        <DetailCol title="Maintenance">
+          <Row label="Total spend" value={currency(maint.spend)} strong />
+          <Row label="Open items" value={String(maint.open)} tone={maint.open > 0 ? "neg" : undefined} />
+          <div className="space-y-1 pt-1">
+            {maint.items.slice(0, 4).map((it) => (
+              <div key={it.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate text-muted-foreground">{it.title}</span>
+                <span className="num shrink-0">{currency(it.cost)}</span>
+              </div>
+            ))}
+            {maint.items.length > 4 && (
+              <div className="text-xs text-muted-foreground">+{maint.items.length - 4} more</div>
+            )}
+          </div>
+        </DetailCol>
+      )}
       {p.notes && (
-        <div className="lg:col-span-4 rounded-md border bg-background p-3 text-sm">
+        <div className="sm:col-span-2 lg:col-span-3 rounded-md border bg-background p-3 text-sm">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">Notes</span>
           <p className="mt-1 whitespace-pre-wrap">{p.notes}</p>
         </div>

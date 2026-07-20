@@ -59,3 +59,44 @@ export const PROPERTY_TYPES = [
   "Land",
   "Other",
 ] as const;
+
+export const maintenance = sqliteTable("maintenance", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  propertyId: integer("propertyId").notNull(),
+  title: text("title").notNull(),
+  category: text("category").notNull().default("General"),
+  status: text("status").notNull().default("Open"),
+  priority: text("priority").notNull().default("Medium"),
+  requestDate: text("requestDate").notNull().default(""),
+  dueDate: text("dueDate").notNull().default(""),
+  completedDate: text("completedDate").notNull().default(""),
+  cost: real("cost").notNull().default(0),
+  vendor: text("vendor").notNull().default(""),
+  invoiceRef: text("invoiceRef").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  createdAt: integer("createdAt").notNull().default(0),
+});
+
+export const insertMaintenanceSchema = createInsertSchema(maintenance).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMaintenance = z.infer<typeof insertMaintenanceSchema>;
+export type Maintenance = typeof maintenance.$inferSelect;
+
+export const MAINTENANCE_CATEGORIES = [
+  "General",
+  "Plumbing",
+  "HVAC",
+  "Electrical",
+  "Roofing",
+  "Appliance",
+  "Pest Control",
+  "Landscaping",
+  "Cosmetic",
+  "Other",
+] as const;
+
+export const MAINTENANCE_STATUSES = ["Open", "In Progress", "Completed", "Cancelled"] as const;
+export const MAINTENANCE_PRIORITIES = ["Low", "Medium", "High", "Urgent"] as const;
