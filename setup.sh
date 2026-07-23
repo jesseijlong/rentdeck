@@ -4,7 +4,7 @@
 # Run on your QNAP:  sudo bash setup.sh
 set -e
 
-REPO_URL="https://github.com/JESSEIJLONG/rentdeck.git"
+REPO_URL="https://github.com/jesseijlong/rentdeck.git"
 APP_DIR="/share/CACHEDEV1_DATA/Container/rental-deck"
 
 cd "$APP_DIR"
@@ -15,13 +15,13 @@ docker compose down 2>/dev/null || true
 echo "==> Connecting this folder to GitHub..."
 if [ -d .git ]; then
   echo "    (already a git repo — fetching latest)"
-  git fetch origin
-  git reset --hard origin/main
+  git fetch origin master
+  git reset --hard origin/master
 else
   git init
   git remote add origin "$REPO_URL"
-  git fetch origin
-  git reset --hard origin/main
+  git fetch origin master
+  git reset --hard origin/master
 fi
 
 echo "==> Creating .env with your password (if missing)..."
