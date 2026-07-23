@@ -36,23 +36,20 @@ export function computeMetrics(p: Property): PropertyMetrics {
     num(p.capexReserve) +
     num(p.otherExpenses);
 
-  const mortgagePayment = num(p.mortgagePayment);
-  const totalMonthlyExpenses = operatingExpensesMonthly + mortgagePayment;
+  const totalMonthlyExpenses = operatingExpensesMonthly;
 
   const monthlyCashFlow = effectiveGrossIncome - totalMonthlyExpenses;
   const annualCashFlow = monthlyCashFlow * 12;
   const noi = effectiveGrossIncome * 12 - operatingExpensesMonthly * 12;
 
   const currentValue = num(p.currentValue);
-  const loanBalance = num(p.loanBalance);
-  const downPayment = num(p.downPayment);
   const purchasePrice = num(p.purchasePrice);
 
-  const equity = currentValue - loanBalance;
+  const equity = currentValue;
   const appreciation = currentValue - purchasePrice;
 
   const capRate = currentValue > 0 ? noi / currentValue : 0;
-  const cashOnCash = downPayment > 0 ? annualCashFlow / downPayment : 0;
+  const cashOnCash = purchasePrice > 0 ? annualCashFlow / purchasePrice : 0;
   const roi = equity > 0 ? annualCashFlow / equity : 0;
 
   return {
@@ -78,14 +75,12 @@ export function sumPortfolio(items: Property[]) {
       acc.monthlyRent += p.monthlyRent;
       acc.effectiveGrossIncome += r.effectiveGrossIncome;
       acc.operatingExpensesMonthly += r.operatingExpensesMonthly;
-      acc.mortgagePayment += p.mortgagePayment;
       acc.monthlyCashFlow += r.monthlyCashFlow;
       acc.annualCashFlow += r.annualCashFlow;
       acc.noi += r.noi;
       acc.equity += r.equity;
       acc.currentValue += p.currentValue;
       acc.purchasePrice += p.purchasePrice;
-      acc.downPayment += p.downPayment;
       acc.appreciation += r.appreciation;
       return acc;
     },
@@ -93,20 +88,18 @@ export function sumPortfolio(items: Property[]) {
       monthlyRent: 0,
       effectiveGrossIncome: 0,
       operatingExpensesMonthly: 0,
-      mortgagePayment: 0,
       monthlyCashFlow: 0,
       annualCashFlow: 0,
       noi: 0,
       equity: 0,
       currentValue: 0,
       purchasePrice: 0,
-      downPayment: 0,
       appreciation: 0,
     }
   );
 
   const avgCapRate = m.currentValue > 0 ? m.noi / m.currentValue : 0;
-  const avgCashOnCash = m.downPayment > 0 ? m.annualCashFlow / m.downPayment : 0;
+  const avgCashOnCash = m.purchasePrice > 0 ? m.annualCashFlow / m.purchasePrice : 0;
 
   return { ...m, avgCapRate, avgCashOnCash };
 }

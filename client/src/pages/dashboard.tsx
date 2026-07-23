@@ -1,7 +1,8 @@
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { type Property, type InsertProperty, type Maintenance } from "@shared/schema";
+import { type Property, type InsertProperty, type Maintenance, type Checklist } from "@shared/schema";
 import { computeMetrics, sumPortfolio } from "@/lib/metrics";
 import { currency, percent, signedCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -12,11 +13,22 @@ import {
   rowsToProperties,
 } from "@/lib/csv";
 import { SAMPLE_PROPERTIES, SAMPLE_MAINTENANCE } from "@/lib/sampleData";
+import { templateItems, checklistTitle, type ChecklistType } from "@/lib/checklistTemplates";
+import { getLeaseAlerts, getLeaseStatus, formatDaysLeft } from "@/lib/lease";
 import { PropertyForm } from "@/components/PropertyForm";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MaintenanceView, maintenanceForProperty } from "@/components/MaintenanceView";
+import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +68,13 @@ import {
   PiggyBank,
   Database,
   Wrench,
+  DoorOpen,
+  ClipboardList,
+  ExternalLink,
+  Users,
+  AlertTriangle,
+  Phone,
+  Mail,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -65,8 +84,9 @@ export default function Dashboard() {
   const [editing, setEditing] = useState<Property | null>(null);
   const [detailTarget, setDetailTarget] = useState<Property | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Property | null>(null);
-  const [view, setView] = useState<"portfolio" | "maintenance">("portfolio");
+  const [view, setView] = useState<"portfolio" | "maintenance" | "vacancy" | "renters">("portfolio");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [, setLocation] = useLocation();
 
   const { data: properties = [], isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -85,6 +105,8 @@ export default function Dashboard() {
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["/api/properties"] });
+
+  const leaseAlerts = useMemo(() => getLeaseAlerts(properties), [properties]);
 
   const createMut = useMutation({
     mutationFn: (data: InsertProperty) =>
@@ -119,6 +141,36 @@ export default function Dashboard() {
     mutationFn: (items: InsertProperty[]) =>
       apiRequest("POST", "/api/properties/replace", items),
     onSuccess: () => invalidate(),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: async ({ property, status }: { property: Property; status: string }) => {
+      const { id: _id, createdAt: _c, ...rest } = property;
+      return apiRequest("PUT", `/api/properties/${property.id}`, { ...rest, status });
+    },
+    onSuccess: () => invalidate(),
+  });
+
+  const createChecklistMut = useMutation({
+    mutationFn: async ({ propertyId, type }: { propertyId: number; type: ChecklistType }) => {
+      const body = {
+        propertyId,
+        type,
+        title: checklistTitle(type),
+        visitDate: new Date().toISOString().slice(0, 10),
+        items: JSON.stringify(templateItems(type)),
+        notes: "",
+      };
+      const res = await apiRequest("POST", "/api/checklists", body);
+      return (await res.json()) as Checklist;
+    },
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ["/api/checklists"] });
+      qc.invalidateQueries({ queryKey: ["/api/properties", detailTarget?.id, "checklists"] });
+      setDetailTarget(null);
+      setLocation(`/checklist/${created.id}`);
+    },
+    onError: () => toast({ title: "Failed to create checklist", variant: "destructive" }),
   });
 
   const portfolio = useMemo(() => sumPortfolio(properties), [properties]);
@@ -205,7 +257,7 @@ export default function Dashboard() {
               <Building2 size={20} />
             </div>
             <div className="leading-tight">
-              <div className="text-base font-semibold tracking-tight">RentDeck</div>
+              <div className="text-base font-semibold tracking-tight">JASSOP GROUP</div>
               <div className="hidden text-xs text-muted-foreground sm:block">Portfolio tracker</div>
             </div>
           </div>
@@ -228,6 +280,19 @@ export default function Dashboard() {
               <Download size={15} className="mr-1.5" /> Export
             </Button>
             <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title="Sign out"
+              data-testid="button-logout"
+              onClick={async () => {
+                await fetch(`${"__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__"}/api/auth/logout`, { method: "POST" });
+                window.location.reload();
+              }}
+            >
+              <LogOut size={16} />
+            </Button>
             <Button size="sm" onClick={openAdd} data-testid="button-add" className="px-2.5 sm:px-3">
               <Plus size={16} className="sm:mr-1.5" />
               <span className="hidden sm:inline">Add property</span>
@@ -250,10 +315,48 @@ export default function Dashboard() {
               </span>
             )}
           </TabButton>
+          <TabButton active={view === "vacancy"} onClick={() => setView("vacancy")} icon={<DoorOpen size={15} />}>
+            Vacancy
+            {properties.filter((p) => p.status !== "Occupied").length > 0 && (
+              <span className="num ml-1.5 rounded-full bg-rose-500/20 px-1.5 py-px text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                {properties.filter((p) => p.status !== "Occupied").length}
+              </span>
+            )}
+          </TabButton>
+          <TabButton active={view === "renters"} onClick={() => setView("renters")} icon={<Users size={15} />}>
+            Renters
+            {leaseAlerts.length > 0 && (
+              <span className="num ml-1.5 rounded-full bg-amber-500/20 px-1.5 py-px text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                {leaseAlerts.length}
+              </span>
+            )}
+          </TabButton>
         </div>
+
+        {leaseAlerts.length > 0 && view !== "renters" && (
+          <button
+            onClick={() => setView("renters")}
+            className="mb-5 flex w-full items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-left text-sm text-amber-700 hover:bg-amber-500/15 dark:text-amber-400"
+            data-testid="banner-lease-alerts"
+          >
+            <AlertTriangle size={15} className="shrink-0" />
+            <span>
+              {leaseAlerts.length} lease{leaseAlerts.length === 1 ? "" : "s"}{" "}
+              {leaseAlerts.some((a) => a.expired) ? "expired or expiring soon" : "expiring soon"} — view Renters
+            </span>
+          </button>
+        )}
 
         {view === "maintenance" ? (
           <MaintenanceView properties={properties} />
+        ) : view === "vacancy" ? (
+          <VacancyView
+            properties={properties}
+            onSetStatus={(property, status) => statusMut.mutate({ property, status })}
+            onOpenDetail={setDetailTarget}
+          />
+        ) : view === "renters" ? (
+          <RentersView properties={properties} onOpenDetail={setDetailTarget} />
         ) : (
           <>
         {/* KPIs */}
@@ -267,12 +370,13 @@ export default function Dashboard() {
             tone={portfolio.monthlyCashFlow >= 0 ? "pos" : "neg"}
             icon={<TrendingUp size={16} />}
           />
-          <Kpi label="Total equity" value={currency(portfolio.equity, { compact: true })} icon={<PiggyBank size={16} />} />
           <Kpi
-            label="Avg cap rate"
-            value={percent(portfolio.avgCapRate)}
-            sub={`CoC ${percent(portfolio.avgCashOnCash)}`}
+            label="Annual cash flow"
+            value={signedCurrency(portfolio.annualCashFlow, { compact: true })}
+            tone={portfolio.annualCashFlow >= 0 ? "pos" : "neg"}
+            icon={<PiggyBank size={16} />}
           />
+
         </div>
 
         {/* Chart */}
@@ -281,7 +385,7 @@ export default function Dashboard() {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Monthly cash flow by property</h2>
-                <p className="text-xs text-muted-foreground">Net monthly after all expenses and mortgage</p>
+                <p className="text-xs text-muted-foreground">Net monthly after all expenses</p>
               </div>
             </div>
             <div className="h-56 w-full">
@@ -344,10 +448,7 @@ export default function Dashboard() {
                     <th className="px-3 py-2.5 text-right font-medium">Expenses</th>
                     <th className="px-3 py-2.5 text-right font-medium">Cash flow</th>
                     <th className="px-3 py-2.5 text-right font-medium">Value</th>
-                    <th className="px-3 py-2.5 text-right font-medium">Equity</th>
-                    <th className="px-3 py-2.5 text-right font-medium">Cap rate</th>
-                    <th className="px-3 py-2.5 text-right font-medium">CoC</th>
-                    <th className="px-3 py-2.5 text-right font-medium">ROI</th>
+
                     <th className="w-10 px-2 py-2.5" />
                   </tr>
                 </thead>
@@ -368,7 +469,14 @@ export default function Dashboard() {
                             </button>
                           </td>
                           <td className="px-3 py-2.5">
-                            <div className="font-medium">{p.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{p.name}</span>
+                              {p.status !== "Occupied" && (
+                                <Badge variant="outline" className={`whitespace-nowrap border ${STATUS_TONE[p.status] ?? ""}`}>
+                                  {p.status}
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-xs text-muted-foreground">
                               {p.address}{p.address && p.city ? ", " : ""}{p.city}{p.city && p.state ? ", " : ""}{p.state} {p.zip}
                             </div>
@@ -379,10 +487,7 @@ export default function Dashboard() {
                             {currency(m.monthlyCashFlow)}
                           </td>
                           <td className="num px-3 py-2.5 text-right">{currency(p.currentValue)}</td>
-                          <td className="num px-3 py-2.5 text-right">{currency(m.equity)}</td>
-                          <td className="num px-3 py-2.5 text-right">{percent(m.capRate)}</td>
-                          <td className={`num px-3 py-2.5 text-right ${m.cashOnCash >= 0 ? "text-success" : "text-destructive"}`}>{percent(m.cashOnCash)}</td>
-                          <td className="num px-3 py-2.5 text-right text-muted-foreground">{percent(m.roi)}</td>
+
                           <td className="px-2 py-2.5">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -476,6 +581,17 @@ export default function Dashboard() {
               maint={maintenanceForProperty(maintenanceItems, detailTarget.id)}
             />
           )}
+          {detailTarget && (
+            <ChecklistsCard
+              propertyId={detailTarget.id}
+              busy={createChecklistMut.isPending}
+              onCreate={(type) => createChecklistMut.mutate({ propertyId: detailTarget.id, type })}
+              onOpen={(id) => {
+                setDetailTarget(null);
+                setLocation(`/checklist/${id}`);
+              }}
+            />
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               Close
@@ -491,6 +607,338 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+const STATUS_TONE: Record<string, string> = {
+  Occupied: "text-success border-success/40",
+  Vacant: "text-rose-600 dark:text-rose-400 border-rose-500/40",
+  Turnover: "text-amber-600 dark:text-amber-400 border-amber-500/40",
+};
+
+function VacancyView({
+  properties,
+  onSetStatus,
+  onOpenDetail,
+}: {
+  properties: Property[];
+  onSetStatus: (p: Property, status: string) => void;
+  onOpenDetail: (p: Property) => void;
+}) {
+  const vacant = properties.filter((p) => p.status !== "Occupied");
+  const occupied = properties.filter((p) => p.status === "Occupied");
+  if (properties.length === 0) {
+    return (
+      <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">
+        No properties yet. Add a property to track occupancy.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-3">
+        <Kpi label="Total units" value={String(properties.length)} icon={<Database size={16} />} />
+        <Kpi label="Occupied" value={String(occupied.length)} icon={<Building2 size={16} />} />
+        <Kpi
+          label="Vacant / turnover"
+          value={String(vacant.length)}
+          tone={vacant.length > 0 ? "neg" : "pos"}
+          icon={<DoorOpen size={16} />}
+        />
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="border-b bg-muted/40 px-4 py-3 text-sm font-semibold">Vacant & turnover</div>
+        {vacant.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">All properties are occupied.</div>
+        ) : (
+          <div className="divide-y">
+            {vacant.map((p) => (
+              <div key={p.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{p.name}</span>
+                    <Badge variant="outline" className={`whitespace-nowrap border ${STATUS_TONE[p.status] ?? ""}`}>
+                      {p.status}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {p.address}{p.address && p.city ? ", " : ""}{p.city}, {p.state} {p.zip}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Select value={p.status} onValueChange={(v) => onSetStatus(p, v)}>
+                    <SelectTrigger className="h-8 w-36" data-testid={`select-vac-status-${p.id}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Occupied">Occupied</SelectItem>
+                      <SelectItem value="Vacant">Vacant</SelectItem>
+                      <SelectItem value="Turnover">Turnover</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={() => onOpenDetail(p)}>
+                    Details
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="border-b bg-muted/40 px-4 py-3 text-sm font-semibold">Occupied ({occupied.length})</div>
+        <div className="divide-y">
+          {occupied.map((p) => (
+            <div key={p.id} className="flex items-center justify-between px-4 py-3">
+              <div className="min-w-0">
+                <div className="font-medium">{p.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {p.address}{p.address && p.city ? ", " : ""}{p.city}, {p.state} {p.zip}
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => onSetStatus(p, "Vacant")}>
+                Mark vacant
+              </Button>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function RentersView({
+  properties,
+  onOpenDetail,
+}: {
+  properties: Property[];
+  onOpenDetail: (p: Property) => void;
+}) {
+  const withTenant = properties.filter((p) => p.tenantName || p.tenantPhone || p.tenantEmail);
+  const withoutTenant = properties.filter((p) => !p.tenantName && !p.tenantPhone && !p.tenantEmail);
+  const alerts = useMemo(() => getLeaseAlerts(properties), [properties]);
+
+  if (properties.length === 0) {
+    return (
+      <div className="rounded-lg border bg-card p-10 text-center text-sm text-muted-foreground">
+        No properties yet. Add a property to track renters.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-3 gap-3">
+        <Kpi label="Total units" value={String(properties.length)} icon={<Database size={16} />} />
+        <Kpi label="With renter on file" value={String(withTenant.length)} icon={<Users size={16} />} />
+        <Kpi
+          label="Lease alerts"
+          value={String(alerts.length)}
+          tone={alerts.length > 0 ? "neg" : "pos"}
+          icon={<AlertTriangle size={16} />}
+        />
+      </div>
+
+      {alerts.length > 0 && (
+        <Card className="overflow-hidden border-amber-500/40">
+          <div className="border-b bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-400">
+            Lease expiring or expired
+          </div>
+          <div className="divide-y">
+            {alerts.map((a) => (
+              <button
+                key={a.property.id}
+                onClick={() => onOpenDetail(a.property)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/50"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium">{a.property.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {a.property.tenantName || "No tenant name on file"}
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={`whitespace-nowrap border ${
+                    a.expired
+                      ? "text-rose-600 dark:text-rose-400 border-rose-500/40"
+                      : "text-amber-600 dark:text-amber-400 border-amber-500/40"
+                  }`}
+                >
+                  {formatDaysLeft(a.daysLeft)}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card className="overflow-hidden">
+        <div className="border-b bg-muted/40 px-4 py-3 text-sm font-semibold">All renters</div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="px-4 py-2.5 font-medium">Property</th>
+                <th className="px-3 py-2.5 font-medium">Tenant</th>
+                <th className="px-3 py-2.5 font-medium">Contact</th>
+                <th className="px-3 py-2.5 font-medium">Lease</th>
+                <th className="px-3 py-2.5 text-right font-medium">Deposit</th>
+                <th className="px-3 py-2.5" />
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {withTenant.map((p) => {
+                const status = getLeaseStatus(p);
+                return (
+                  <tr key={p.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium">{p.name}</div>
+                      <div className="text-xs text-muted-foreground">{p.address}</div>
+                    </td>
+                    <td className="px-3 py-2.5">{p.tenantName || "—"}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-col gap-0.5 text-xs">
+                        {p.tenantPhone && (
+                          <span className="flex items-center gap-1"><Phone size={11} />{p.tenantPhone}</span>
+                        )}
+                        {p.tenantEmail && (
+                          <span className="flex items-center gap-1 truncate"><Mail size={11} />{p.tenantEmail}</span>
+                        )}
+                        {!p.tenantPhone && !p.tenantEmail && <span className="text-muted-foreground">—</span>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {p.leaseStart || p.leaseEnd ? (
+                        <div>
+                          <div className="text-xs">
+                            {formatDate(p.leaseStart) || "—"} → {formatDate(p.leaseEnd) || "—"}
+                          </div>
+                          {(status.expired || status.expiringSoon) && (
+                            <Badge
+                              variant="outline"
+                              className={`mt-0.5 whitespace-nowrap border text-[11px] ${
+                                status.expired
+                                  ? "text-rose-600 dark:text-rose-400 border-rose-500/40"
+                                  : "text-amber-600 dark:text-amber-400 border-amber-500/40"
+                              }`}
+                            >
+                              {formatDaysLeft(status.daysLeft)}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="num px-3 py-2.5 text-right">{p.deposit ? currency(p.deposit) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => onOpenDetail(p)}>
+                        Details
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {withTenant.length === 0 && (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            No renters recorded yet. Add tenant info from a property's Edit form.
+          </div>
+        )}
+      </Card>
+
+      {withoutTenant.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="border-b bg-muted/40 px-4 py-3 text-sm font-semibold">
+            No renter on file ({withoutTenant.length})
+          </div>
+          <div className="divide-y">
+            {withoutTenant.map((p) => (
+              <div key={p.id} className="flex items-center justify-between px-4 py-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">{p.address}</div>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => onOpenDetail(p)}>
+                  Add renter
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ChecklistsCard({
+  propertyId,
+  busy,
+  onCreate,
+  onOpen,
+}: {
+  propertyId: number;
+  busy: boolean;
+  onCreate: (type: ChecklistType) => void;
+  onOpen: (id: number) => void;
+}) {
+  const { data: items = [] } = useQuery<Checklist[]>({
+    queryKey: ["/api/properties", propertyId, "checklists"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/properties/${propertyId}/checklists`);
+      return res.json();
+    },
+  });
+  const recent = [...items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <ClipboardList size={13} /> Checklists
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => onCreate("new-tenant")}
+          data-testid="button-new-tenant-checklist"
+        >
+          <ClipboardList size={14} className="mr-1.5" /> New tenant checklist
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => onCreate("monthly-visit")}
+          data-testid="button-monthly-visit-checklist"
+        >
+          <ClipboardList size={14} className="mr-1.5" /> Monthly visit checklist
+        </Button>
+      </div>
+      {recent.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <div className="text-xs text-muted-foreground">Saved checklists</div>
+          {recent.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onOpen(c.id)}
+              className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted/50"
+            >
+              <span className="flex items-center gap-1.5 truncate">
+                <ExternalLink size={13} className="shrink-0 text-muted-foreground" />
+                <span className="truncate">{c.title || c.type}</span>
+              </span>
+              <span className="num shrink-0 text-xs text-muted-foreground">{formatDate(c.visitDate) || "no date"}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -562,10 +1010,6 @@ function DetailPanel({
     { label: "Purchased", value: `${formatDate(p.purchaseDate)} · ${currency(p.purchasePrice)}` },
     { label: "Current value", value: currency(p.currentValue) },
     { label: "Appreciation", value: signedCurrency(m.appreciation), tone: m.appreciation >= 0 ? "pos" : "neg" },
-    { label: "Loan balance", value: currency(p.loanBalance) },
-    { label: "Interest rate", value: `${p.interestRate}%` },
-    { label: "Equity", value: currency(m.equity) },
-    { label: "Monthly mortgage", value: currency(p.mortgagePayment) },
   ];
   const income = [
     { label: "Gross monthly rent", value: currency(p.monthlyRent) },
@@ -588,9 +1032,6 @@ function DetailPanel({
     { label: "NOI (annual)", value: currency(m.noi) },
     { label: "Monthly cash flow", value: currency(m.monthlyCashFlow), tone: m.monthlyCashFlow >= 0 ? "pos" : "neg" },
     { label: "Annual cash flow", value: currency(m.annualCashFlow), tone: m.annualCashFlow >= 0 ? "pos" : "neg" },
-    { label: "Cap rate", value: percent(m.capRate) },
-    { label: "Cash-on-cash", value: percent(m.cashOnCash), tone: m.cashOnCash >= 0 ? "pos" : "neg" },
-    { label: "ROI (on equity)", value: percent(m.roi) },
   ];
 
   return (
@@ -614,6 +1055,35 @@ function DetailPanel({
         {returns.map((l) => (
           <Row key={l.label} {...l} />
         ))}
+      </DetailCol>
+      <DetailCol title="Renter">
+        {(() => {
+          const lease =
+            p.leaseStart || p.leaseEnd
+              ? `${formatDate(p.leaseStart) || "—"} → ${formatDate(p.leaseEnd) || "—"}`
+              : "";
+          const rows: { label: string; value: string }[] = [];
+          if (p.tenantName) rows.push({ label: "Name", value: p.tenantName });
+          if (p.tenantPhone) rows.push({ label: "Phone", value: p.tenantPhone });
+          if (p.tenantEmail) rows.push({ label: "Email", value: p.tenantEmail });
+          if (lease) rows.push({ label: "Lease", value: lease });
+          if (p.deposit) rows.push({ label: "Deposit", value: currency(p.deposit) });
+          if (rows.length === 0) {
+            return (
+              <div className="py-1 text-xs text-muted-foreground">No renter recorded.</div>
+            );
+          }
+          return (
+            <>
+              {rows.map((l) => (
+                <Row key={l.label} {...l} />
+              ))}
+              {p.tenantNotes && (
+                <div className="pt-1 text-xs text-muted-foreground">{p.tenantNotes}</div>
+              )}
+            </>
+          );
+        })()}
       </DetailCol>
       {maint.items.length > 0 && (
         <DetailCol title="Maintenance">

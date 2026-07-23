@@ -1,0 +1,22 @@
+services:
+  rentdeck:
+    image: rentdeck:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rentdeck
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persistent storage for data.db — a visible folder next to this file,
+      # so you can browse/backup it from File Station. Survives container
+      # updates and NAS reboots.
+      - ./rentdeck-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DATABASE_PATH=/app/data/data.db
+      # Password gate — read from .env (not in the repo, stays on your NAS).
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
+      - SESSION_SECRET=${SESSION_SECRET}

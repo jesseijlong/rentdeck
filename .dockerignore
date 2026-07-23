@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.gitignore
+*.log
+data.db-shm
+data.db-wal
+batch_maint.py
+batch_maint.py.*
+.DS_Store
+README-QNAP.md

@@ -142,8 +142,8 @@ export function MaintenanceView({ properties }: { properties: Property[] }) {
       .filter((m) => (filterProp === "all" ? true : m.propertyId === Number(filterProp)))
       .filter((m) => (filterStatus === "all" ? true : m.status === filterStatus))
       .sort((a, b) => {
-        const da = a.requestDate || a.createdAt;
-        const db = b.requestDate || b.createdAt;
+        const da = String(a.requestDate || a.createdAt || "");
+        const db = String(b.requestDate || b.createdAt || "");
         return db.localeCompare(da);
       });
   }, [items, filterProp, filterStatus]);
@@ -256,7 +256,21 @@ export function MaintenanceView({ properties }: { properties: Property[] }) {
                       </Badge>
                     </td>
                     <td className={`px-3 py-2.5 ${PRIORITY_TONE[m.priority] ?? ""}`}>{m.priority}</td>
-                    <td className="num px-3 py-2.5 text-right">{currency(m.cost)}</td>
+                    <td className="num px-3 py-2.5 text-right">
+                      {currency(m.cost)}
+                      {(m.actualPartsCost > 0 || m.actualLaborCost > 0) && (
+                        <div className="text-xs font-normal text-muted-foreground">
+                          Parts {currency(m.actualPartsCost, { compact: true })} · Labor {currency(m.actualLaborCost, { compact: true })}
+                        </div>
+                      )}
+                      {m.actualPartsCost === 0 &&
+                        m.actualLaborCost === 0 &&
+                        (m.estimatedPartsCost > 0 || m.estimatedLaborCost > 0) && (
+                          <div className="text-xs font-normal text-muted-foreground">
+                            Est. only
+                          </div>
+                        )}
+                    </td>
                     <td className="px-3 py-2.5 text-muted-foreground">
                       {formatDate(m.completedDate || m.requestDate)}
                     </td>

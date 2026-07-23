@@ -10,6 +10,7 @@ export const properties = sqliteTable("properties", {
   state: text("state").notNull().default(""),
   zip: text("zip").notNull().default(""),
   propertyType: text("propertyType").notNull().default("Single Family"),
+  status: text("status").notNull().default("Occupied"),
 
   purchaseDate: text("purchaseDate").notNull().default(""),
   purchasePrice: real("purchasePrice").notNull().default(0),
@@ -33,6 +34,14 @@ export const properties = sqliteTable("properties", {
   utilities: real("utilities").notNull().default(0),
   capexReserve: real("capexReserve").notNull().default(0),
   otherExpenses: real("otherExpenses").notNull().default(0),
+
+  tenantName: text("tenantName").notNull().default(""),
+  tenantPhone: text("tenantPhone").notNull().default(""),
+  tenantEmail: text("tenantEmail").notNull().default(""),
+  leaseStart: text("leaseStart").notNull().default(""),
+  leaseEnd: text("leaseEnd").notNull().default(""),
+  deposit: real("deposit").notNull().default(0),
+  tenantNotes: text("tenantNotes").notNull().default(""),
 
   notes: text("notes").notNull().default(""),
   createdAt: integer("createdAt").notNull().default(0),
@@ -60,6 +69,8 @@ export const PROPERTY_TYPES = [
   "Other",
 ] as const;
 
+export const PROPERTY_STATUSES = ["Occupied", "Vacant", "Turnover"] as const;
+
 export const maintenance = sqliteTable("maintenance", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   propertyId: integer("propertyId").notNull(),
@@ -71,6 +82,10 @@ export const maintenance = sqliteTable("maintenance", {
   dueDate: text("dueDate").notNull().default(""),
   completedDate: text("completedDate").notNull().default(""),
   cost: real("cost").notNull().default(0),
+  estimatedPartsCost: real("estimatedPartsCost").notNull().default(0),
+  estimatedLaborCost: real("estimatedLaborCost").notNull().default(0),
+  actualPartsCost: real("actualPartsCost").notNull().default(0),
+  actualLaborCost: real("actualLaborCost").notNull().default(0),
   vendor: text("vendor").notNull().default(""),
   invoiceRef: text("invoiceRef").notNull().default(""),
   notes: text("notes").notNull().default(""),
@@ -100,3 +115,24 @@ export const MAINTENANCE_CATEGORIES = [
 
 export const MAINTENANCE_STATUSES = ["Open", "In Progress", "Completed", "Cancelled"] as const;
 export const MAINTENANCE_PRIORITIES = ["Low", "Medium", "High", "Urgent"] as const;
+
+export const checklists = sqliteTable("checklists", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  propertyId: integer("propertyId").notNull(),
+  type: text("type").notNull(), // 'new-tenant' | 'monthly-visit'
+  title: text("title").notNull().default(""),
+  visitDate: text("visitDate").notNull().default(""),
+  items: text("items").notNull().default("[]"), // JSON array of { label, checked }
+  notes: text("notes").notNull().default(""),
+  createdAt: integer("createdAt").notNull().default(0),
+});
+
+export const insertChecklistSchema = createInsertSchema(checklists).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertChecklist = z.infer<typeof insertChecklistSchema>;
+export type Checklist = typeof checklists.$inferSelect;
+
+export const CHECKLIST_TYPES = ["new-tenant", "monthly-visit"] as const;

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { currency } from "@/lib/format";
 import {
   Select,
   SelectContent,
@@ -46,6 +47,10 @@ const EMPTY = (propertyId: number): InsertMaintenance => ({
   dueDate: "",
   completedDate: "",
   cost: 0,
+  estimatedPartsCost: 0,
+  estimatedLaborCost: 0,
+  actualPartsCost: 0,
+  actualLaborCost: 0,
   vendor: "",
   invoiceRef: "",
   notes: "",
@@ -78,6 +83,9 @@ export function MaintenanceForm({
   const set = <K extends keyof InsertMaintenance>(k: K, v: InsertMaintenance[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  const estimateTotal = (form.estimatedPartsCost || 0) + (form.estimatedLaborCost || 0);
+  const actualTotal = (form.actualPartsCost || 0) + (form.actualLaborCost || 0);
+
   const submit = async () => {
     setErr(null);
     if (!form.title.trim()) {
@@ -90,7 +98,10 @@ export function MaintenanceForm({
     }
     setSaving(true);
     try {
-      await onSave(form);
+      const actualTotal = (form.actualPartsCost || 0) + (form.actualLaborCost || 0);
+      const estimateTotal = (form.estimatedPartsCost || 0) + (form.estimatedLaborCost || 0);
+      const payload = { ...form, cost: actualTotal || estimateTotal };
+      await onSave(payload);
       onOpenChange(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to save.");
@@ -125,7 +136,7 @@ export function MaintenanceForm({
         <DialogHeader>
           <DialogTitle>{editing ? "Edit maintenance record" : "Log maintenance"}</DialogTitle>
           <DialogDescription>
-            Track repairs, vendors, and costs. Completed items roll up into per-property spend.
+            Track repairs, vendors, and estimated vs. actual parts/labor costs. Completed items roll up into per-property spend.
           </DialogDescription>
         </DialogHeader>
 
@@ -196,15 +207,6 @@ export function MaintenanceForm({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Cost">
-            <Input
-              type="number"
-              inputMode="decimal"
-              value={form.cost === 0 ? "" : String(form.cost)}
-              onChange={(e) => set("cost", e.target.value === "" ? 0 : Number(e.target.value))}
-              placeholder="0"
-            />
-          </Field>
           <Field label="Request date">
             <Input
               type="date"
@@ -242,6 +244,65 @@ export function MaintenanceForm({
               placeholder="INV-1042"
             />
           </Field>
+          <div className="col-span-2 mt-1 rounded-lg border bg-muted/30 p-3">
+            <div className="mb-2.5 flex items-center justify-between">
+              <h4 className="text-sm font-semibold">Estimate &amp; cost</h4>
+              <span className="text-xs text-muted-foreground">
+                Total: {currency(estimateTotal)} est. · {currency(actualTotal)} actual
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+              <Field label="Est. parts">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  data-testid="input-maint-est-parts"
+                  value={form.estimatedPartsCost === 0 ? "" : String(form.estimatedPartsCost)}
+                  onChange={(e) =>
+                    set("estimatedPartsCost", e.target.value === "" ? 0 : Number(e.target.value))
+                  }
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Est. labor">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  data-testid="input-maint-est-labor"
+                  value={form.estimatedLaborCost === 0 ? "" : String(form.estimatedLaborCost)}
+                  onChange={(e) =>
+                    set("estimatedLaborCost", e.target.value === "" ? 0 : Number(e.target.value))
+                  }
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Actual parts">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  data-testid="input-maint-actual-parts"
+                  value={form.actualPartsCost === 0 ? "" : String(form.actualPartsCost)}
+                  onChange={(e) =>
+                    set("actualPartsCost", e.target.value === "" ? 0 : Number(e.target.value))
+                  }
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Actual labor">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  data-testid="input-maint-actual-labor"
+                  value={form.actualLaborCost === 0 ? "" : String(form.actualLaborCost)}
+                  onChange={(e) =>
+                    set("actualLaborCost", e.target.value === "" ? 0 : Number(e.target.value))
+                  }
+                  placeholder="0"
+                />
+              </Field>
+            </div>
+          </div>
+
           <div className="col-span-2 grid gap-1.5">
             <Label htmlFor="m-notes">Notes</Label>
             <Textarea

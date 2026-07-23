@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PROPERTY_TYPES, type InsertProperty, type Property } from "@shared/schema";
+import { PROPERTY_TYPES, PROPERTY_STATUSES, type InsertProperty, type Property } from "@shared/schema";
 import { computeMetrics } from "@/lib/metrics";
 import { currency, percent } from "@/lib/format";
 
@@ -32,11 +32,6 @@ type Props = {
 const NUM_FIELDS: { key: keyof InsertProperty; label: string; hint?: string }[] = [
   { key: "purchasePrice", label: "Purchase price" },
   { key: "currentValue", label: "Current value" },
-  { key: "downPayment", label: "Down payment" },
-  { key: "loanAmount", label: "Original loan amount" },
-  { key: "loanBalance", label: "Current loan balance" },
-  { key: "interestRate", label: "Interest rate", hint: "%" },
-  { key: "mortgagePayment", label: "Mortgage payment (P&I)", hint: "monthly" },
   { key: "monthlyRent", label: "Monthly rent" },
   { key: "otherIncome", label: "Other income", hint: "monthly" },
   { key: "vacancyRate", label: "Vacancy rate", hint: "%" },
@@ -57,6 +52,7 @@ const EMPTY: InsertProperty = {
   state: "",
   zip: "",
   propertyType: "Single Family",
+  status: "Occupied",
   purchaseDate: "",
   purchasePrice: 0,
   currentValue: 0,
@@ -76,6 +72,13 @@ const EMPTY: InsertProperty = {
   utilities: 0,
   capexReserve: 0,
   otherExpenses: 0,
+  tenantName: "",
+  tenantPhone: "",
+  tenantEmail: "",
+  leaseStart: "",
+  leaseEnd: "",
+  deposit: 0,
+  tenantNotes: "",
   notes: "",
 };
 
@@ -139,7 +142,7 @@ export function PropertyForm({ open, onOpenChange, onSave, editing }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2 pb-24">
           <SectionTitle>Property basics</SectionTitle>
           <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-3">
             <div className="col-span-2 sm:col-span-1 grid gap-1.5">
@@ -165,6 +168,24 @@ export function PropertyForm({ open, onOpenChange, onSave, editing }: Props) {
                   {PROPERTY_TYPES.map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 sm:col-span-1 grid gap-1.5">
+              <Label htmlFor="f-status">Status</Label>
+              <Select
+                value={form.status}
+                onValueChange={(v) => set("status", v)}
+              >
+                <SelectTrigger id="f-status" data-testid="select-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROPERTY_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -217,8 +238,8 @@ export function PropertyForm({ open, onOpenChange, onSave, editing }: Props) {
             </div>
           </div>
 
-          <SectionTitle>Financing & value</SectionTitle>
-          {NUM_FIELDS.slice(0, 7).map((f) => (
+          <SectionTitle>Value</SectionTitle>
+          {NUM_FIELDS.slice(0, 2).map((f) => (
             <div key={f.key} className="grid gap-1.5">
               <Label htmlFor={`f-${f.key}`}>{f.label}</Label>
               <Input
@@ -237,7 +258,7 @@ export function PropertyForm({ open, onOpenChange, onSave, editing }: Props) {
           ))}
 
           <SectionTitle>Income</SectionTitle>
-          {NUM_FIELDS.slice(7, 10).map((f) => (
+          {NUM_FIELDS.slice(2, 5).map((f) => (
             <div key={f.key} className="grid gap-1.5">
               <Label htmlFor={`f-${f.key}`}>{f.label}</Label>
               <Input
@@ -255,7 +276,7 @@ export function PropertyForm({ open, onOpenChange, onSave, editing }: Props) {
           ))}
 
           <SectionTitle>Expenses (monthly)</SectionTitle>
-          {NUM_FIELDS.slice(10).map((f) => (
+          {NUM_FIELDS.slice(5).map((f) => (
             <div key={f.key} className="grid gap-1.5">
               <Label htmlFor={`f-${f.key}`}>{f.label}</Label>
               <Input
@@ -271,6 +292,79 @@ export function PropertyForm({ open, onOpenChange, onSave, editing }: Props) {
               )}
             </div>
           ))}
+
+          <SectionTitle>Renter</SectionTitle>
+          <div className="grid gap-1.5">
+            <Label htmlFor="f-tenantName">Tenant name</Label>
+            <Input
+              id="f-tenantName"
+              data-testid="input-tenantName"
+              value={form.tenantName}
+              onChange={(e) => set("tenantName", e.target.value)}
+              placeholder="Full name"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="f-tenantPhone">Phone</Label>
+            <Input
+              id="f-tenantPhone"
+              data-testid="input-tenantPhone"
+              value={form.tenantPhone}
+              onChange={(e) => set("tenantPhone", e.target.value)}
+              placeholder="(910) 555-0123"
+            />
+          </div>
+          <div className="col-span-2 grid gap-1.5">
+            <Label htmlFor="f-tenantEmail">Email</Label>
+            <Input
+              id="f-tenantEmail"
+              data-testid="input-tenantEmail"
+              type="email"
+              value={form.tenantEmail}
+              onChange={(e) => set("tenantEmail", e.target.value)}
+              placeholder="tenant@email.com"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="f-leaseStart">Lease start</Label>
+            <Input
+              id="f-leaseStart"
+              type="date"
+              value={form.leaseStart}
+              onChange={(e) => set("leaseStart", e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="f-leaseEnd">Lease end</Label>
+            <Input
+              id="f-leaseEnd"
+              type="date"
+              value={form.leaseEnd}
+              onChange={(e) => set("leaseEnd", e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="f-deposit">Security deposit</Label>
+            <Input
+              id="f-deposit"
+              type="number"
+              inputMode="decimal"
+              value={form.deposit === 0 ? "" : String(form.deposit)}
+              onChange={(e) => setNum("deposit", e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div className="col-span-2 grid gap-1.5">
+            <Label htmlFor="f-tenantNotes">Tenant notes</Label>
+            <Textarea
+              id="f-tenantNotes"
+              data-testid="textarea-tenantNotes"
+              value={form.tenantNotes}
+              onChange={(e) => set("tenantNotes", e.target.value)}
+              rows={2}
+              placeholder="Occupants, pets, vehicle, special terms…"
+            />
+          </div>
 
           <div className="col-span-2 grid gap-1.5">
             <Label htmlFor="f-notes">Notes</Label>

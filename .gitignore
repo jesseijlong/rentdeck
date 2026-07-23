@@ -1,16 +1,24 @@
+# Dependencies
 node_modules/
-dist/
-.vite/
 
-# SQLite database files — never commit; exposes demo data at rest
+# Build output
+dist/
+
+# Database & runtime data (NEVER commit — contains tenant PII)
 data.db
 data.db-shm
 data.db-wal
-data.db-journal
+rentdeck-data/
+*.db
+*.db-shm
+*.db-wal
 
+# Secrets (your password stays on the NAS only)
 .env
-.env.*
-!.env.example
 
+# Misc
 *.log
 .DS_Store
+batch_maint.py
+qa-*.png
+rentdeck-qnap.zip

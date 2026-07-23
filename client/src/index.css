@@ -326,3 +326,18 @@
 @layer utilities {
   .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+  .print-area {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  /* checkboxes: keep visible, larger for printing */
+  input[type="checkbox"] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
